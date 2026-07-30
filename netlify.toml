@@ -1,0 +1,41 @@
+# TQStarling Security Awareness Training — Netlify config
+#
+# Netlify picks this file up automatically. It configures the build (if you
+# connect the repo) and applies security headers to every served response.
+
+[build]
+  # Only used if you connect this repo to Netlify for continuous deploys.
+  # Not used if you drag-and-drop the pre-built dist/ folder.
+  command = "npm run build"
+  publish = "dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Prevent this training from being framed by another site (clickjacking).
+    X-Frame-Options = "DENY"
+    # Don't leak referrer on outbound clicks.
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Modern browsers should not sniff MIME types.
+    X-Content-Type-Options = "nosniff"
+    # Force HTTPS (Netlify already does this, but be explicit).
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    # Restrict where scripts and other resources may load from.
+    # Google Fonts is the only external dependency at runtime.
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    # Discourage indexing by search engines. Also set in <meta> for redundancy.
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    # Vite emits hashed filenames — safe to cache forever.
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Single-page-app style fallback isn't strictly required here (the training
+# doesn't use client-side routing), but it costs nothing and prevents 404s if
+# someone bookmarks a deep link.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
