@@ -64,6 +64,20 @@ export async function insertResult({ entraOid, userName, userEmail, score, total
   return rows[0];
 }
 
+// Every submission, newest first — powers the admin dashboard and
+// the Excel export. Excludes the JSONB answer detail (fetch that
+// per-row if ever needed); the summary columns are what HR reports on.
+export async function listResults() {
+  const { rows } = await getPool().query(
+    `SELECT id, user_name, user_email, score, total, passed,
+            training_version, completed_at
+       FROM exam_results
+      ORDER BY completed_at DESC
+      LIMIT 5000`,
+  );
+  return rows;
+}
+
 // Most recent submissions for a user — used to tell a returning user
 // they already have a passing record on file.
 export async function latestResultFor(email) {

@@ -15,7 +15,9 @@ Interactive web app that walks a TQStarling workforce member through 8 security 
 
 ## Auth flow
 
-`/auth/login` → Entra (single-tenant) → `/auth/callback` sets the session → SPA reads `GET /api/me` (401 = show sign-in gate). `POST /api/results` requires the session. Local dev without an Entra registration: `AUTH_DISABLED=true` signs in a fixed dev user — hard-gated to `NODE_ENV !== 'production'`.
+`/auth/login` → Entra (single-tenant) → `/auth/callback` sets the session → SPA reads `GET /api/me` (401 = show sign-in gate). `POST /api/results` requires the session. Local dev without an Entra registration: `AUTH_DISABLED=true` signs in a fixed dev user — hard-gated to `NODE_ENV !== 'production'` (the dev user is also treated as admin).
+
+**Admin dashboard:** users whose verified session email is on the `ADMIN_EMAILS` allowlist (comma-separated service variable) get `isAdmin: true` from `/api/me`, an Admin button on the welcome screen, and access to `GET /api/admin/results` + `GET /api/admin/results.xlsx` (exceljs). The dashboard lists all submissions, exports to Excel, and reprints the Record of Completion for passing rows. Access is enforced server-side in `requireAdmin` — never rely on the UI flag.
 
 ## Editing content
 
@@ -73,7 +75,7 @@ AUTH_DISABLED=true npm run dev:server
 The following change the compliance posture of the tool and require discussion with VP People + CEO before implementation:
 
 - Analytics or telemetry beyond the exam-result records
-- Exposing result data through new endpoints (a reporting/admin view needs an access-control decision first)
+- Exposing result data through endpoints beyond the existing `ADMIN_EMAILS`-gated admin API; widening the allowlist is a VP People decision
 - Collecting data beyond what the Entra session and exam answers already provide
 - New third-party runtime dependencies
 

@@ -116,3 +116,34 @@ export function requireUser(req, res, next) {
   }
   next();
 }
+
+// =============================================================
+// Admin allowlist
+//
+// ADMIN_EMAILS: comma-separated work emails allowed to use the
+// admin dashboard (view all results, export, reprint records).
+// Checked against the VERIFIED email from the Entra session —
+// never against anything the client sends.
+// =============================================================
+
+function adminEmails() {
+  return (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isAdmin(user) {
+  if (!user?.email) return false;
+  if (authBypassed && user.oid === 'dev-bypass') return true; // dev convenience
+  return adminEmails().includes(user.email.toLowerCase());
+}
+
+export function requireAdmin(req, res, next) {
+  requireUser(req, res, () => {
+    if (!isAdmin(req.session.user)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    next();
+  });
+}

@@ -12,6 +12,16 @@ Completion records store the `TRAINING_VERSION` in effect at the time — HR sho
 
 ---
 
+## [2.1.0] — 2026-07-30
+
+Admin dashboard.
+
+- New **Admin** button on the welcome screen, visible only to users on the `ADMIN_EMAILS` allowlist (a Railway service variable; initially tim@, manasi@, liz@, joe@ tqstarling.com). Access is enforced server-side against the verified Entra session — the button is only UI.
+- Admin dashboard lists every examination submission (name, email, score, pass/fail, version, date) with name/email filtering.
+- **Export to Excel** — downloads all results as a real `.xlsx` (`/api/admin/results.xlsx`, generated server-side with exceljs).
+- **Reprint record** — regenerates the standard Record of Completion for any passing submission from the stored result, for print / save-as-PDF.
+- Training content unchanged.
+
 ## [2.0.0] — 2026-07-30
 
 Platform re-architecture: Railway + Entra SSO + database-backed results. Training content unchanged.

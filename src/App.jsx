@@ -12,7 +12,7 @@ import {
 
 const STORAGE_KEY = 'tqs-saa-2026-progress';
 const TRAINING_ID = 'TQS-TRN-SAA-2026';
-const TRAINING_VERSION = '2.0.0';
+const TRAINING_VERSION = '2.1.0';
 const PASS_THRESHOLD = 0.8; // 80%
 
 const BRAND = {
@@ -759,7 +759,7 @@ function Sidebar({ modules, currentIdx, completedMap, atExam, examState, onNavig
 // Welcome screen
 // =============================================================
 
-function WelcomeScreen({ onStart, user, resuming }) {
+function WelcomeScreen({ onStart, user, resuming, onAdmin }) {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 sm:p-10" style={{ background: BRAND.paper }}>
       <div className="max-w-2xl w-full">
@@ -811,15 +811,28 @@ function WelcomeScreen({ onStart, user, resuming }) {
                 Not you?
               </a>
             </div>
-            <button
-              type="button"
-              onClick={onStart}
-              className="px-7 py-3.5 text-sm font-semibold inline-flex items-center gap-2"
-              style={{ background: BRAND.dark, color: 'white', cursor: 'pointer' }}
-            >
-              {resuming ? 'Resume training' : 'Begin training'}
-              <ChevronRight size={16} />
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={onStart}
+                className="px-7 py-3.5 text-sm font-semibold inline-flex items-center gap-2"
+                style={{ background: BRAND.dark, color: 'white', cursor: 'pointer' }}
+              >
+                {resuming ? 'Resume training' : 'Begin training'}
+                <ChevronRight size={16} />
+              </button>
+              {user.isAdmin && (
+                <button
+                  type="button"
+                  onClick={onAdmin}
+                  className="px-7 py-3.5 text-sm font-semibold inline-flex items-center gap-2"
+                  style={{ background: 'white', color: BRAND.dark, border: `1px solid ${BRAND.rule}`, cursor: 'pointer' }}
+                >
+                  <Shield size={15} style={{ color: BRAND.gold }} />
+                  Admin
+                </button>
+              )}
+            </div>
           </>
         )}
 
@@ -1085,17 +1098,24 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score,
 // Certificate
 // =============================================================
 
-function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus }) {
+function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus, onBack }) {
   return (
     <div className="overflow-y-auto" style={{ height: '100vh', background: BRAND.paper }}>
       <div className="px-6 sm:px-12 py-10 sm:py-14 max-w-3xl mx-auto">
         <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
+          {onBack && (
+            <button type="button" onClick={onBack} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
+              <ArrowLeft size={14} /> Back to results
+            </button>
+          )}
           <button type="button" onClick={onPrint} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ background: BRAND.dark, color: 'white' }}>
             <Printer size={14} /> Print / Save as PDF
           </button>
-          <button type="button" onClick={onRetake} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
-            <RefreshCw size={14} /> Retake examination
-          </button>
+          {onRetake && (
+            <button type="button" onClick={onRetake} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
+              <RefreshCw size={14} /> Retake examination
+            </button>
+          )}
         </div>
 
         <div className="p-8 sm:p-14" style={{ background: 'white', border: `1px solid ${BRAND.rule}`, position: 'relative' }}>
@@ -1153,6 +1173,7 @@ function Certificate({ name, email, score, total, date, onRetake, onPrint, saveS
           </div>
         </div>
 
+        {onBack ? null : (
         <div className="mt-8 p-5 text-sm leading-relaxed" style={{ background: BRAND.cream, borderLeft: `3px solid ${saveStatus === 'error' ? BRAND.warn : BRAND.gold}`, color: BRAND.ink }}>
           <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: BRAND.dark }}>
             {saveStatus === 'error' ? 'Record not yet saved' : 'Record filed'}
@@ -1161,6 +1182,151 @@ function Certificate({ name, email, score, total, date, onRetake, onPrint, saveS
           {(saveStatus === 'saved' || saveStatus == null) && 'Your result has been recorded automatically in the training results database under your TQStarling account, per TQS-HRS-001 §5. Records are retained for six years. No further action is required — you may print a copy for your own records.'}
           {saveStatus === 'error' && 'Your result could not be saved to the training results database. Check your connection and retake or resubmit the examination; if the problem persists, contact security@tqstarling.com with a printed or PDF copy of this record.'}
         </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
+// Admin dashboard — results of all workforce members
+// Access is enforced server-side (ADMIN_EMAILS); this UI only
+// renders for users the server flagged as isAdmin.
+// =============================================================
+
+function AdminView({ user, onClose }) {
+  const [rows, setRows] = useState(null);      // null = loading
+  const [error, setError] = useState(null);
+  const [reprint, setReprint] = useState(null); // result row being reprinted
+  const [filter, setFilter] = useState('');
+
+  async function load() {
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/results', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setRows((await res.json()).results);
+    } catch (e) {
+      setError('Could not load results. Refresh to retry; contact security@tqstarling.com if it persists.');
+      setRows([]);
+    }
+  }
+  useEffect(() => { load(); }, []);
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  // Reprint mode — render the standard Record of Completion with the
+  // stored result data.
+  if (reprint) {
+    return (
+      <Certificate
+        name={reprint.user_name}
+        email={reprint.user_email}
+        score={reprint.score}
+        total={reprint.total}
+        date={fmtDate(reprint.completed_at)}
+        onPrint={() => window.print()}
+        onBack={() => setReprint(null)}
+      />
+    );
+  }
+
+  const filtered = (rows || []).filter((r) =>
+    !filter.trim() ||
+    r.user_name.toLowerCase().includes(filter.trim().toLowerCase()) ||
+    r.user_email.toLowerCase().includes(filter.trim().toLowerCase()));
+
+  return (
+    <div className="overflow-y-auto" style={{ height: '100vh', background: BRAND.paper }}>
+      <div className="px-6 sm:px-12 py-10 max-w-5xl mx-auto">
+        <div className="flex flex-wrap items-end justify-between gap-4 mb-2">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] font-semibold mb-2" style={{ color: BRAND.gold }}>
+              TQStarling · {TRAINING_ID} · Administration
+            </div>
+            <h1 className="text-3xl sm:text-4xl leading-tight" style={{ color: BRAND.dark, fontFamily: 'var(--fnt-display)', fontWeight: 500 }}>
+              Training results
+            </h1>
+          </div>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
+            <ArrowLeft size={14} /> Back
+          </button>
+        </div>
+        <p className="text-sm mb-6" style={{ color: BRAND.muted }}>
+          Every examination submission, newest first. Signed in as {user.email}. Records retained six years per TQS-HRS-001 §5.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter by name or email…"
+            className="px-4 py-2.5 text-sm outline-none"
+            style={{ background: 'white', border: `1px solid ${BRAND.rule}`, color: BRAND.ink, minWidth: '16rem' }}
+          />
+          <a
+            href="/api/admin/results.xlsx"
+            className="px-4 py-2.5 text-xs font-semibold inline-flex items-center gap-2 no-underline"
+            style={{ background: BRAND.dark, color: 'white' }}
+          >
+            Export to Excel
+          </a>
+          <button type="button" onClick={() => { setRows(null); load(); }} className="px-4 py-2.5 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
+            <RefreshCw size={13} /> Refresh
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-4 mb-5 text-sm" style={{ background: BRAND.warnBg, borderLeft: `3px solid ${BRAND.warn}`, color: BRAND.warn }}>{error}</div>
+        )}
+        {rows === null && !error && (
+          <div className="text-sm" style={{ color: BRAND.muted }}>Loading results…</div>
+        )}
+        {rows !== null && !error && filtered.length === 0 && (
+          <div className="text-sm" style={{ color: BRAND.muted }}>{rows.length === 0 ? 'No examination submissions recorded yet.' : 'No results match the filter.'}</div>
+        )}
+
+        {filtered.length > 0 && (
+          <div style={{ background: 'white', border: `1px solid ${BRAND.rule}`, overflowX: 'auto' }}>
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 720 }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${BRAND.rule}` }}>
+                  {['Name', 'Email', 'Score', 'Result', 'Version', 'Completed', ''].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 text-xs uppercase tracking-widest font-semibold" style={{ color: BRAND.dark }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${BRAND.ruleSoft}` }}>
+                    <td className="px-4 py-3" style={{ color: BRAND.ink }}>{r.user_name}</td>
+                    <td className="px-4 py-3" style={{ color: BRAND.muted }}>{r.user_email}</td>
+                    <td className="px-4 py-3" style={{ color: BRAND.ink }}>{r.score}/{r.total} · {Math.round((r.score / r.total) * 100)}%</td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-0.5 text-xs font-semibold" style={r.passed
+                        ? { background: BRAND.successBg, color: BRAND.success }
+                        : { background: BRAND.warnBg, color: BRAND.warn }}>
+                        {r.passed ? 'Pass' : 'Fail'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3" style={{ color: BRAND.muted }}>v{r.training_version}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: BRAND.muted }}>{fmtDate(r.completed_at)}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {r.passed && (
+                        <button type="button" onClick={() => setReprint(r)} className="text-xs font-semibold inline-flex items-center gap-1.5 underline" style={{ color: BRAND.dark }}>
+                          <Printer size={12} /> Reprint record
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1206,6 +1372,7 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [started, setStarted] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [adminOpen, setAdminOpen] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [atExam, setAtExam] = useState(false);
   const [completed, setCompleted] = useState({}); // moduleId -> bool
@@ -1330,10 +1497,20 @@ export default function App() {
     return <div style={{ minHeight: '100vh', background: BRAND.paper }} />;
   }
 
+  // Admin dashboard — reachable from the welcome screen without
+  // starting the training. Server enforces access; this is just UI.
+  if (adminOpen && user?.isAdmin) {
+    return (
+      <div className="saa-root">
+        <AdminView user={user} onClose={() => setAdminOpen(false)} />
+      </div>
+    );
+  }
+
   if (!user || !started) {
     return (
       <div className="saa-root">
-        <WelcomeScreen onStart={onStart} user={user} resuming={started || Object.keys(completed).length > 0} />
+        <WelcomeScreen onStart={onStart} user={user} resuming={started || Object.keys(completed).length > 0} onAdmin={() => setAdminOpen(true)} />
       </div>
     );
   }

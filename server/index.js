@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
-import { getPool, initDb, insertResult, latestResultFor } from './db.js';
-import { registerAuthRoutes, requireUser, authBypassed } from './auth.js';
+import { getPool, initDb, insertResult, latestResultFor, listResults } from './db.js';
+import { registerAuthRoutes, requireUser, requireAdmin, isAdmin, authBypassed } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, '..', 'dist');
@@ -89,7 +89,7 @@ app.get('/api/me', requireUser, async (req, res) => {
     try { priorResult = await latestResultFor(email); }
     catch (err) { console.error('latestResultFor failed:', err.message); }
   }
-  res.json({ name, email, priorResult });
+  res.json({ name, email, priorResult, isAdmin: isAdmin(req.session.user) });
 });
 
 app.post('/api/results', requireUser, async (req, res) => {
@@ -111,6 +111,53 @@ app.post('/api/results', requireUser, async (req, res) => {
   } catch (err) {
     console.error('insertResult failed:', err.message);
     res.status(500).json({ error: 'db_write_failed' });
+  }
+});
+
+// --- Admin: results dashboard + Excel export -------------------
+app.get('/api/admin/results', requireAdmin, async (req, res) => {
+  try {
+    res.json({ results: await listResults() });
+  } catch (err) {
+    console.error('listResults failed:', err.message);
+    res.status(500).json({ error: 'db_read_failed' });
+  }
+});
+
+app.get('/api/admin/results.xlsx', requireAdmin, async (req, res) => {
+  try {
+    const rows = await listResults();
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'TQStarling InfoSec Training';
+    const ws = wb.addWorksheet('Exam Results');
+    ws.columns = [
+      { header: 'Name', key: 'user_name', width: 28 },
+      { header: 'Email', key: 'user_email', width: 32 },
+      { header: 'Score', key: 'score', width: 8 },
+      { header: 'Total', key: 'total', width: 8 },
+      { header: 'Percent', key: 'percent', width: 10 },
+      { header: 'Result', key: 'result', width: 10 },
+      { header: 'Training Version', key: 'training_version', width: 16 },
+      { header: 'Completed At (UTC)', key: 'completed_at', width: 24 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    rows.forEach((r) => ws.addRow({
+      ...r,
+      percent: `${Math.round((r.score / r.total) * 100)}%`,
+      result: r.passed ? 'Pass' : 'Fail',
+      completed_at: new Date(r.completed_at).toISOString().replace('T', ' ').slice(0, 19),
+    }));
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="TQStarling_Training_Results_${stamp}.xlsx"`,
+    });
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('xlsx export failed:', err.message);
+    res.status(500).json({ error: 'export_failed' });
   }
 });
 
