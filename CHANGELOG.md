@@ -12,6 +12,17 @@ Completion records store the `TRAINING_VERSION` in effect at the time — HR sho
 
 ---
 
+## [2.0.0] — 2026-07-30
+
+Platform re-architecture: Railway + Entra SSO + database-backed results. Training content unchanged.
+
+- **Single sign-on** — Microsoft Entra ID (tqstarling.com tenant, single-tenant OIDC via MSAL). The welcome screen's manual name/email fields are gone; identity comes from the verified directory account and results are filed under it.
+- **Results database** — new Express backend records every exam submission (pass and fail) in Postgres `exam_results`: user, email, Entra object ID, timestamp, score, pass/fail, training version, per-question exam answers and knowledge-check results (JSONB). Identity is stamped server-side from the session.
+- **Manual tracking retired** — the `TQStarling_Training_Log.xlsx` screenshot/email flow is removed; the database is the authoritative Training Completion Log per TQS-HRS-001 §5. Certificate and exam copy updated accordingly.
+- **Deployment moved Netlify → Railway** (project `TQStarling-InfoSec-Test`): `railway.json`, `/healthz`, security headers now served by Express; `netlify.toml` removed.
+- Local progress is now stored per-user (`tqs-saa-2026-progress:<email>`) so shared machines don't leak progress between accounts.
+- Structural change to sign-in flow and record handling → major version bump. Exam content, module content, pass threshold, and certificate format are unchanged.
+
 ## [1.0.1] — 2026-07-30
 
 Bug fix.

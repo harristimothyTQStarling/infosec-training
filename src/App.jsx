@@ -12,7 +12,7 @@ import {
 
 const STORAGE_KEY = 'tqs-saa-2026-progress';
 const TRAINING_ID = 'TQS-TRN-SAA-2026';
-const TRAINING_VERSION = '1.0.1';
+const TRAINING_VERSION = '2.0.0';
 const PASS_THRESHOLD = 0.8; // 80%
 
 const BRAND = {
@@ -442,17 +442,50 @@ const EXAM = [
 // Storage helpers
 // =============================================================
 
-async function loadState() {
+// Progress is keyed per signed-in user so a shared machine never
+// shows one person's progress to another.
+function storageKeyFor(email) {
+  return email ? `${STORAGE_KEY}:${email.toLowerCase()}` : STORAGE_KEY;
+}
+async function loadState(email) {
   try {
-    const val = localStorage.getItem(STORAGE_KEY);
+    const val = localStorage.getItem(storageKeyFor(email));
     if (val) return JSON.parse(val);
   } catch (e) { /* no state or corrupted */ }
   return null;
 }
-async function saveState(s) {
+async function saveState(email, s) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(storageKeyFor(email), JSON.stringify(s));
   } catch (e) { /* quota exceeded or private-mode */ }
+}
+
+// =============================================================
+// Auth + results API
+// =============================================================
+
+// Returns { name, email, priorResult } or null when not signed in.
+async function fetchMe() {
+  try {
+    const res = await fetch('/api/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+// Records an exam submission (pass or fail). Identity comes from the
+// server-side session; we only send the attempt data.
+async function postResult(payload) {
+  const res = await fetch('/api/results', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`save failed (${res.status})`);
+  return res.json();
 }
 
 // =============================================================
@@ -715,6 +748,7 @@ function Sidebar({ modules, currentIdx, completedMap, atExam, examState, onNavig
           <div className="pt-4 text-xs uppercase tracking-widest font-semibold" style={{ color: BRAND.goldSoft }}>Workforce member</div>
           <div className="mt-1 text-sm" style={{ color: 'white' }}>{name}</div>
           {email && <div className="text-xs mt-0.5" style={{ color: 'rgba(246,243,236,0.6)' }}>{email}</div>}
+          <a href="/auth/logout" className="inline-block mt-2 text-xs underline" style={{ color: 'rgba(246,243,236,0.5)' }}>Sign out</a>
         </div>
       )}
     </nav>
@@ -725,12 +759,7 @@ function Sidebar({ modules, currentIdx, completedMap, atExam, examState, onNavig
 // Welcome screen
 // =============================================================
 
-function WelcomeScreen({ onStart, savedName, savedEmail }) {
-  const [name, setName] = useState(savedName || '');
-  const [email, setEmail] = useState(savedEmail || '');
-  const [touched, setTouched] = useState(false);
-  const valid = name.trim().length >= 2;
-
+function WelcomeScreen({ onStart, user, resuming }) {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 sm:p-10" style={{ background: BRAND.paper }}>
       <div className="max-w-2xl w-full">
@@ -748,57 +777,54 @@ function WelcomeScreen({ onStart, savedName, savedEmail }) {
           A required course for the TQStarling Workforce. Eight short modules and a fifteen-question examination. Approximately thirty to forty-five minutes. Your progress is saved as you go, so you can complete it across multiple sittings.
         </p>
 
-        <div className="space-y-4 mb-8" style={{ maxWidth: '32rem' }}>
-          <div>
-            <label className="block text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: BRAND.dark }}>
-              Full name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => setTouched(true)}
-              placeholder="As it appears in HR records"
-              className="w-full px-4 py-3 text-base outline-none transition-colors"
-              style={{
-                background: 'white',
-                border: `1px solid ${touched && !valid ? BRAND.warn : BRAND.rule}`,
-                color: BRAND.ink,
-              }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: BRAND.dark }}>
-              Work email <span className="font-normal" style={{ color: BRAND.muted }}>(optional)</span>
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@tqstarling.com"
-              className="w-full px-4 py-3 text-base outline-none transition-colors"
-              style={{ background: 'white', border: `1px solid ${BRAND.rule}`, color: BRAND.ink }}
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          disabled={!valid}
-          onClick={() => onStart(name.trim(), email.trim())}
-          className="px-7 py-3.5 text-sm font-semibold inline-flex items-center gap-2 transition-opacity"
-          style={{
-            background: valid ? BRAND.dark : BRAND.rule,
-            color: valid ? 'white' : BRAND.muted,
-            cursor: valid ? 'pointer' : 'not-allowed',
-          }}
-        >
-          {savedName ? 'Resume training' : 'Begin training'}
-          <ChevronRight size={16} />
-        </button>
+        {!user ? (
+          <>
+            <p className="text-sm leading-relaxed mb-6" style={{ color: BRAND.muted, maxWidth: '32rem' }}>
+              Sign in with your TQStarling work account to begin. Your completion record is filed under your verified directory identity.
+            </p>
+            <a
+              href="/auth/login"
+              className="px-7 py-3.5 text-sm font-semibold inline-flex items-center gap-3 no-underline"
+              style={{ background: BRAND.dark, color: 'white' }}
+            >
+              {/* Microsoft logo */}
+              <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true">
+                <rect x="0" y="0" width="10" height="10" fill="#F25022" />
+                <rect x="11" y="0" width="10" height="10" fill="#7FBA00" />
+                <rect x="0" y="11" width="10" height="10" fill="#00A4EF" />
+                <rect x="11" y="11" width="10" height="10" fill="#FFB900" />
+              </svg>
+              Sign in with Microsoft
+            </a>
+          </>
+        ) : (
+          <>
+            <div className="mb-6 p-4 flex items-center gap-3" style={{ background: 'white', border: `1px solid ${BRAND.rule}`, maxWidth: '32rem' }}>
+              <span className="flex-shrink-0 inline-flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: '50%', background: BRAND.cream, color: BRAND.dark, fontFamily: 'var(--fnt-display)', fontWeight: 600 }}>
+                {user.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate" style={{ color: BRAND.dark }}>{user.name}</div>
+                <div className="text-xs truncate" style={{ color: BRAND.muted }}>{user.email}</div>
+              </div>
+              <a href="/auth/logout" className="ml-auto text-xs underline flex-shrink-0" style={{ color: BRAND.muted }}>
+                Not you?
+              </a>
+            </div>
+            <button
+              type="button"
+              onClick={onStart}
+              className="px-7 py-3.5 text-sm font-semibold inline-flex items-center gap-2"
+              style={{ background: BRAND.dark, color: 'white', cursor: 'pointer' }}
+            >
+              {resuming ? 'Resume training' : 'Begin training'}
+              <ChevronRight size={16} />
+            </button>
+          </>
+        )}
 
         <div className="mt-12 pt-6 text-xs leading-relaxed" style={{ borderTop: `1px solid ${BRAND.rule}`, color: BRAND.muted, maxWidth: '32rem' }}>
-          Your completion record will be filed under your name in the Training Completion Log per TQS-HRS-001 §5 and retained for six years. By proceeding you acknowledge that the answers you provide reflect your own work.
+          Your examination results are recorded automatically under your TQStarling account in the training results database per TQS-HRS-001 §5 and retained for six years. By proceeding you acknowledge that the answers you provide reflect your own work.
         </div>
       </div>
     </div>
@@ -900,7 +926,7 @@ function ModuleView({ module, idx, total, onPrev, onNext, kcAnswer, onKcAnswer, 
 // Final exam
 // =============================================================
 
-function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score }) {
+function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score, saveStatus }) {
   const allAnswered = exam.every((_, i) => answers[i] != null);
   const passed = score != null && score / exam.length >= PASS_THRESHOLD;
   const ref = useRef(null);
@@ -949,10 +975,15 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score 
             </div>
             <p className="text-sm leading-relaxed mt-2" style={{ color: BRAND.ink }}>
               {passed
-                ? 'Your completion record is generated below. Submit a screenshot or download to your manager so the Training Completion Log can be updated.'
-                : `You need at least ${Math.ceil(exam.length * PASS_THRESHOLD)} correct to pass. Review the highlighted questions, revisit the relevant modules, then retake the examination.`
+                ? 'Your result has been recorded in the training results database and your completion record is generated below.'
+                : `You need at least ${Math.ceil(exam.length * PASS_THRESHOLD)} correct to pass. Review the highlighted questions, revisit the relevant modules, then retake the examination. This attempt has been recorded.`
               }
             </p>
+            {saveStatus === 'error' && (
+              <p className="text-xs leading-relaxed mt-2 font-semibold" style={{ color: BRAND.warn }}>
+                This attempt could not be saved to the results database — check your connection. Your score is shown above; resubmitting after reconnecting will record it.
+              </p>
+            )}
           </div>
         )}
 
@@ -1054,7 +1085,7 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score 
 // Certificate
 // =============================================================
 
-function Certificate({ name, email, score, total, date, onRetake, onPrint }) {
+function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus }) {
   return (
     <div className="overflow-y-auto" style={{ height: '100vh', background: BRAND.paper }}>
       <div className="px-6 sm:px-12 py-10 sm:py-14 max-w-3xl mx-auto">
@@ -1122,9 +1153,13 @@ function Certificate({ name, email, score, total, date, onRetake, onPrint }) {
           </div>
         </div>
 
-        <div className="mt-8 p-5 text-sm leading-relaxed" style={{ background: BRAND.cream, borderLeft: `3px solid ${BRAND.gold}`, color: BRAND.ink }}>
-          <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: BRAND.dark }}>Next steps</div>
-          Submit this record (screenshot or printed copy) to your manager and the VP of People for entry in the Training Completion Log per TQS-HRS-001 §5. Records are retained for six years.
+        <div className="mt-8 p-5 text-sm leading-relaxed" style={{ background: BRAND.cream, borderLeft: `3px solid ${saveStatus === 'error' ? BRAND.warn : BRAND.gold}`, color: BRAND.ink }}>
+          <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: BRAND.dark }}>
+            {saveStatus === 'error' ? 'Record not yet saved' : 'Record filed'}
+          </div>
+          {saveStatus === 'saving' && 'Recording your result in the training results database…'}
+          {(saveStatus === 'saved' || saveStatus == null) && 'Your result has been recorded automatically in the training results database under your TQStarling account, per TQS-HRS-001 §5. Records are retained for six years. No further action is required — you may print a copy for your own records.'}
+          {saveStatus === 'error' && 'Your result could not be saved to the training results database. Check your connection and retake or resubmit the examination; if the problem persists, contact security@tqstarling.com with a printed or PDF copy of this record.'}
         </div>
       </div>
     </div>
@@ -1166,9 +1201,11 @@ export default function App() {
 
   // State
   const [loaded, setLoaded] = useState(false);
+  const [user, setUser] = useState(null); // { name, email, priorResult } from /api/me — null until signed in
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [started, setStarted] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
   const [currentIdx, setCurrentIdx] = useState(0);
   const [atExam, setAtExam] = useState(false);
   const [completed, setCompleted] = useState({}); // moduleId -> bool
@@ -1180,36 +1217,43 @@ export default function App() {
   const [completionDate, setCompletionDate] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Load on mount
+  // Load on mount: check the Entra session first, then restore this
+  // user's local progress. Identity always comes from the session —
+  // never from stored or typed values.
   useEffect(() => {
     (async () => {
-      const s = await loadState();
-      if (s) {
-        if (s.name) setName(s.name);
-        if (s.email) setEmail(s.email);
-        if (s.started) setStarted(s.started);
-        if (s.currentIdx != null) setCurrentIdx(s.currentIdx);
-        if (s.atExam) setAtExam(s.atExam);
-        if (s.completed) setCompleted(s.completed);
-        if (s.kcResults) setKcResults(s.kcResults);
-        if (s.examAnswers) setExamAnswers(s.examAnswers);
-        if (s.examSubmitted) setExamSubmitted(s.examSubmitted);
-        if (s.examScore != null) setExamScore(s.examScore);
-        if (s.examPassed) setExamPassed(s.examPassed);
-        if (s.completionDate) setCompletionDate(s.completionDate);
+      const me = await fetchMe();
+      if (me) {
+        setUser(me);
+        setName(me.name);
+        setEmail(me.email);
+        const s = await loadState(me.email);
+        if (s) {
+          if (s.started) setStarted(s.started);
+          if (s.currentIdx != null) setCurrentIdx(s.currentIdx);
+          if (s.atExam) setAtExam(s.atExam);
+          if (s.completed) setCompleted(s.completed);
+          if (s.kcResults) setKcResults(s.kcResults);
+          if (s.examAnswers) setExamAnswers(s.examAnswers);
+          if (s.examSubmitted) setExamSubmitted(s.examSubmitted);
+          if (s.examScore != null) setExamScore(s.examScore);
+          if (s.examPassed) setExamPassed(s.examPassed);
+          if (s.completionDate) setCompletionDate(s.completionDate);
+        }
       }
       setLoaded(true);
     })();
   }, []);
 
-  // Persist
+  // Persist progress locally (results themselves go to the database
+  // on exam submission).
   useEffect(() => {
-    if (!loaded || !name) return;
-    saveState({ name, email, started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate });
-  }, [loaded, name, email, started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate]);
+    if (!loaded || !user) return;
+    saveState(user.email, { started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate });
+  }, [loaded, user, started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate]);
 
-  function onStart(n, e) {
-    setName(n); setEmail(e); setStarted(true);
+  function onStart() {
+    setStarted(true);
     if (currentIdx === 0 && !atExam) setCurrentIdx(0);
   }
 
@@ -1254,6 +1298,19 @@ export default function App() {
     if (passed) {
       setCompletionDate(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }));
     }
+    // Record the attempt — pass or fail — in the results database.
+    // The server stamps identity and timestamp from the session.
+    setSaveStatus('saving');
+    postResult({
+      score: s,
+      total: EXAM.length,
+      passed,
+      trainingVersion: TRAINING_VERSION,
+      examAnswers,
+      kcResults,
+    })
+      .then(() => setSaveStatus('saved'))
+      .catch(() => setSaveStatus('error'));
   }
 
   function onRetake() {
@@ -1262,6 +1319,7 @@ export default function App() {
     setExamScore(null);
     setExamPassed(false);
     setCompletionDate(null);
+    setSaveStatus(null);
   }
 
   function onPrint() {
@@ -1272,10 +1330,10 @@ export default function App() {
     return <div style={{ minHeight: '100vh', background: BRAND.paper }} />;
   }
 
-  if (!started) {
+  if (!user || !started) {
     return (
       <div className="saa-root">
-        <WelcomeScreen onStart={onStart} savedName={name} savedEmail={email} />
+        <WelcomeScreen onStart={onStart} user={user} resuming={started || Object.keys(completed).length > 0} />
       </div>
     );
   }
@@ -1292,6 +1350,7 @@ export default function App() {
           date={completionDate}
           onRetake={onRetake}
           onPrint={onPrint}
+          saveStatus={saveStatus}
         />
       </div>
     );
@@ -1353,6 +1412,7 @@ export default function App() {
               onSubmit={onExamSubmit}
               onBack={() => { setAtExam(false); setCurrentIdx(MODULES.length - 1); }}
               submitted={examSubmitted}
+              saveStatus={saveStatus}
               score={examScore}
             />
           ) : (

@@ -1,16 +1,21 @@
 # TQStarling Security Awareness Training
 
-Interactive web app that walks a TQStarling workforce member through 8 security awareness modules + a 15-question final examination, producing a printable Record of Completion.
+Interactive web app that walks a TQStarling workforce member through 8 security awareness modules + a 15-question final examination. Sign-in is via Microsoft Entra ID (tqstarling.com tenant); every exam submission is recorded automatically in Postgres. A printable Record of Completion is generated on pass.
 
-- **Training ID:** TQS-TRN-SAA-2026 · **Current version:** 1.0 (set in `src/App.jsx`)
+- **Training ID:** TQS-TRN-SAA-2026 · **Current version:** 2.0.0 (set in `src/App.jsx`)
 - **Required annually** per HR Security Policy TQS-HRS-001 §5; completion records retained 6 years (HIPAA 45 CFR §164.530(j))
 - **Owner:** VP of People (day-to-day) · **Approver:** CEO for substantive content changes
 
 ## Stack
 
-React 18 + Vite + Tailwind. Single-file architecture: nearly everything lives in `src/App.jsx` (~1,400 lines). Icons from `lucide-react`. Display serif (Fraunces) + body sans (Inter) load from Google Fonts CDN with system fallbacks in CSS variables `--fnt-display` / `--fnt-body`.
+- **Frontend:** React 18 + Vite + Tailwind. Single-file architecture: nearly everything lives in `src/App.jsx`. Icons from `lucide-react`. Display serif (Fraunces) + body sans (Inter) from Google Fonts CDN with system fallbacks in CSS variables `--fnt-display` / `--fnt-body`.
+- **Backend:** Express (`server/`) — serves the built SPA, handles Entra OIDC sign-in (`@azure/msal-node`, auth-code flow), stores sessions in Postgres (`connect-pg-simple`), records exam results. Security headers (CSP, HSTS, X-Frame-Options DENY, noindex) are set in `server/index.js`.
+- **Database:** Postgres (Railway plugin). `exam_results` table — one row per exam submission (pass AND fail), schema in `server/db.js`. Identity columns are stamped server-side from the Entra session, never trusted from the client.
+- **Deployment:** Railway, project **TQStarling-InfoSec-Test** — `railway.json` sets build (`npm ci && npm run build`), start (`npm start`), healthcheck `/healthz`. Env vars documented in `.env.example`.
 
-Deploys as a static site to Netlify. `netlify.toml` sets security headers (strict CSP, `X-Frame-Options: DENY`, HSTS, `noindex`) and immutable caching on hashed assets.
+## Auth flow
+
+`/auth/login` → Entra (single-tenant) → `/auth/callback` sets the session → SPA reads `GET /api/me` (401 = show sign-in gate). `POST /api/results` requires the session. Local dev without an Entra registration: `AUTH_DISABLED=true` signs in a fixed dev user — hard-gated to `NODE_ENV !== 'production'`.
 
 ## Editing content
 
@@ -22,10 +27,10 @@ Two arrays at the top of `src/App.jsx` hold all learning content:
 Available `block` types (rendered by `Block` in App.jsx): `lead`, `p`, `h3`, `list`, `numbered`, `definitions`, `callout` (tones: `gold` / `neutral` / `warn`), `classTable` (hardcoded, used only for the classification-levels table in Module 02). If a new block type is genuinely needed, add a case to the `Block` switch and use it consistently — don't inline new markup ad-hoc.
 
 **Every substantive content edit must:**
-1. Bump `TRAINING_VERSION` at the top of `src/App.jsx` (semver — patch for typos, minor for content refresh, major for structural change)
+1. Bump `TRAINING_VERSION` at the top of `src/App.jsx` AND `version` in `package.json` (semver — patch for typos, minor for content refresh, major for structural change)
 2. Add a `CHANGELOG.md` entry
-3. Rebuild (`npm run build`) and redeploy
-4. Notify VP People so the Training Completion Log tracks the new version
+3. Deploy to Railway (push if git-connected, or `railway up`)
+4. Notify VP People — result rows carry `training_version`, so reporting can distinguish editions
 
 ## Tone conventions
 
@@ -33,10 +38,13 @@ Written for adult professionals. No condescension, no exclamation points, no "gr
 
 ## Gotchas
 
-- **Unicode escape sequences render literally inside JSX text.** `\u00B7` and `\u2019` work inside JS string literals but appear as the literal characters `\u00B7` when placed as JSX children. Use the actual characters (`·`, `'`, `—`, `"…"`), not the escape sequences. This bit us in the initial build.
+- **Unicode escape sequences render literally inside JSX text.** `·` and `’` work inside JS string literals but appear as the literal characters `·` when placed as JSX children. Use the actual characters (`·`, `'`, `—`, `"…"`), not the escape sequences. This bit us in the initial build.
 - **Brand colors go through inline `style={{}}`** referencing the `BRAND` constant object, not Tailwind arbitrary values like `bg-[#052821]`. This is deliberate — safer across Tailwind config changes and easier to grep.
-- **State lives in `localStorage`** under key `tqs-saa-2026-progress`. Do not introduce `sessionStorage`, `indexedDB`, cookies, third-party analytics, or any server-side telemetry. The authoritative record of completion is `TQStarling_Training_Log.xlsx` maintained by HR, not the browser.
-- **No client-side routing.** Single page. Don't add react-router. If you split into routes, also update the SPA redirect in `netlify.toml`.
+- **`ModuleView` must stay keyed by module id** (`key={MODULES[currentIdx].id}`) — without it, React reuses the instance and knowledge-check selections bleed across modules (fixed in 1.0.1).
+- **Progress vs. results:** in-flight progress lives in `localStorage` under `tqs-saa-2026-progress:<email>` (per-user, for shared machines). The authoritative record is the `exam_results` table — NOT localStorage, and no longer an Excel log.
+- **Identity is server-side.** The client never sends name/email; `POST /api/results` stamps identity from the session. Don't add client-supplied identity fields back.
+- **No client-side routing.** Single page. Don't add react-router. The Express catch-all serves `index.html` for unknown paths.
+- **CSP:** `form-action` allows `login.microsoftonline.com` for the OIDC redirect. If you add any external resource, update the CSP in `server/index.js`.
 
 ## Brand tokens
 
@@ -50,26 +58,27 @@ Written for adult professionals. No condescension, no exclamation points, no "gr
 ## Commands
 
 ```bash
-npm install           # first time on a new machine
-npm run dev           # local preview http://localhost:5173 with HMR
-npm run build         # produce dist/
-npm run preview       # serve the built dist/ locally
+npm install                          # first time on a new machine
+npm run dev                          # Vite HMR frontend :5173 (proxies /api,/auth to :8080)
+npm run dev:server                   # Express backend :8080 (reads .env)
+npm run build                        # produce dist/
+npm start                            # serve dist/ + API (what Railway runs)
 
-netlify deploy --prod --dir=dist   # deploy after building (Netlify CLI)
+# Local full-stack dev without Entra:
+AUTH_DISABLED=true npm run dev:server
 ```
 
 ## Out of scope — ask before adding
 
 The following change the compliance posture of the tool and require discussion with VP People + CEO before implementation:
 
-- Analytics or telemetry of any kind
-- Server-side rendering or a backend
-- Auth / SSO (currently intentionally an open URL protected by CSP + noindex)
-- Data collection beyond the name/email captured on the welcome screen
-- New third-party runtime dependencies beyond React + lucide-react + Google Fonts
+- Analytics or telemetry beyond the exam-result records
+- Exposing result data through new endpoints (a reporting/admin view needs an access-control decision first)
+- Collecting data beyond what the Entra session and exam answers already provide
+- New third-party runtime dependencies
 
 ## Related documents (outside this repo)
 
 - Source policy: `TQS-HRS-001` §5 — SharePoint `/HR/Documents/General/Policies/Security and Access/02_TQStarling_HR_Security_Policy.docx`
-- Completion log: `TQStarling_Training_Log.xlsx` — SharePoint `/HR/Documents/`
+- Completion records: `exam_results` table, Railway Postgres (project TQStarling-InfoSec-Test)
 - Periodic actions this deliverable participates in: `TQS-PAR-001` (annual training refresh, quarterly phishing simulations)
