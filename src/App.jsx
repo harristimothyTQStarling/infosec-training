@@ -12,7 +12,7 @@ import {
 
 const STORAGE_KEY = 'tqs-saa-2026-progress';
 const TRAINING_ID = 'TQS-TRN-SAA-2026';
-const TRAINING_VERSION = '1.0';
+const TRAINING_VERSION = '1.0.1';
 const PASS_THRESHOLD = 0.8; // 80%
 
 const BRAND = {
@@ -1357,6 +1357,7 @@ export default function App() {
             />
           ) : (
             <ModuleView
+              key={MODULES[currentIdx].id}
               module={MODULES[currentIdx]}
               idx={currentIdx}
               total={MODULES.length}

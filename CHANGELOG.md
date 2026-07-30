@@ -12,6 +12,12 @@ Completion records store the `TRAINING_VERSION` in effect at the time — HR sho
 
 ---
 
+## [1.0.1] — 2026-07-30
+
+Bug fix.
+
+- Fixed knowledge-check answers carrying over between modules: selecting an option in one module's knowledge check no longer appears pre-selected on the next module. `ModuleView` is now keyed by module id so its local state resets on navigation. Previously-submitted answers still restore correctly when revisiting a module.
+
 ## [1.0.0] — 2026-06-17
 
 Initial edition.
