@@ -12,7 +12,7 @@ import {
 
 const STORAGE_KEY = 'tqs-saa-2026-progress';
 const TRAINING_ID = 'TQS-TRN-SAA-2026';
-const TRAINING_VERSION = '2.1.0';
+const TRAINING_VERSION = '2.1.1';
 const PASS_THRESHOLD = 0.8; // 80%
 
 const BRAND = {
@@ -679,7 +679,7 @@ function KnowledgeCheck({ check, answered, onAnswer }) {
 // Sidebar
 // =============================================================
 
-function Sidebar({ modules, currentIdx, completedMap, atExam, examState, onNavigate, name, email }) {
+function Sidebar({ modules, currentIdx, completedMap, atExam, examState, onNavigate, name, email, isAdmin, onAdmin }) {
   return (
     <nav className="h-full" style={{ background: BRAND.dark, color: BRAND.cream, minHeight: '100vh' }}>
       <div className="p-6 sm:p-7" style={{ borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
@@ -748,6 +748,11 @@ function Sidebar({ modules, currentIdx, completedMap, atExam, examState, onNavig
           <div className="pt-4 text-xs uppercase tracking-widest font-semibold" style={{ color: BRAND.goldSoft }}>Workforce member</div>
           <div className="mt-1 text-sm" style={{ color: 'white' }}>{name}</div>
           {email && <div className="text-xs mt-0.5" style={{ color: 'rgba(246,243,236,0.6)' }}>{email}</div>}
+          {isAdmin && (
+            <button type="button" onClick={onAdmin} className="mt-3 w-full text-left px-3 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.08)', color: BRAND.goldSoft, border: `1px solid rgba(217,181,116,0.35)` }}>
+              <Shield size={13} /> Admin dashboard
+            </button>
+          )}
           <a href="/auth/logout" className="inline-block mt-2 text-xs underline" style={{ color: 'rgba(246,243,236,0.5)' }}>Sign out</a>
         </div>
       )}
@@ -1098,7 +1103,7 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score,
 // Certificate
 // =============================================================
 
-function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus, onBack }) {
+function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus, onBack, onAdmin }) {
   return (
     <div className="overflow-y-auto" style={{ height: '100vh', background: BRAND.paper }}>
       <div className="px-6 sm:px-12 py-10 sm:py-14 max-w-3xl mx-auto">
@@ -1114,6 +1119,11 @@ function Certificate({ name, email, score, total, date, onRetake, onPrint, saveS
           {onRetake && (
             <button type="button" onClick={onRetake} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
               <RefreshCw size={14} /> Retake examination
+            </button>
+          )}
+          {onAdmin && (
+            <button type="button" onClick={onAdmin} className="px-4 py-2 text-xs font-semibold inline-flex items-center gap-2" style={{ border: `1px solid ${BRAND.rule}`, color: BRAND.dark, background: 'white' }}>
+              <Shield size={14} style={{ color: BRAND.gold }} /> Admin dashboard
             </button>
           )}
         </div>
@@ -1528,6 +1538,7 @@ export default function App() {
           onRetake={onRetake}
           onPrint={onPrint}
           saveStatus={saveStatus}
+          onAdmin={user?.isAdmin ? () => setAdminOpen(true) : undefined}
         />
       </div>
     );
@@ -1558,6 +1569,8 @@ export default function App() {
             onNavigate={onNavigate}
             name={name}
             email={email}
+            isAdmin={user?.isAdmin}
+            onAdmin={() => { setSidebarOpen(false); setAdminOpen(true); }}
           />
         </aside>
         {/* Sidebar - mobile drawer */}
@@ -1574,6 +1587,8 @@ export default function App() {
                 onNavigate={onNavigate}
                 name={name}
                 email={email}
+                isAdmin={user?.isAdmin}
+                onAdmin={() => { setSidebarOpen(false); setAdminOpen(true); }}
               />
             </aside>
           </>

@@ -12,6 +12,12 @@ Completion records store the `TRAINING_VERSION` in effect at the time — HR sho
 
 ---
 
+## [2.1.1] — 2026-07-30
+
+Bug fix.
+
+- The Admin entry was only on the welcome screen, which users with training in progress never see again — admins mid-training had no way to reach the dashboard. Added an **Admin dashboard** button to the sidebar footer (desktop and mobile drawer) and to the certificate screen's action row.
+
 ## [2.1.0] — 2026-07-30
 
 Admin dashboard.
