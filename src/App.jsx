@@ -12,7 +12,7 @@ import {
 
 const STORAGE_KEY = 'tqs-saa-2026-progress';
 const TRAINING_ID = 'TQS-TRN-SAA-2026';
-const TRAINING_VERSION = '2.1.1';
+const TRAINING_VERSION = '2.2.0';
 const PASS_THRESHOLD = 0.8; // 80%
 
 const BRAND = {
@@ -804,6 +804,19 @@ function WelcomeScreen({ onStart, user, resuming, onAdmin }) {
           </>
         ) : (
           <>
+            {user.priorResult && (
+              <div className="mb-6 p-4 text-sm leading-relaxed" style={{
+                background: user.priorResult.ever_passed ? BRAND.successBg : BRAND.cream,
+                borderLeft: `3px solid ${user.priorResult.ever_passed ? BRAND.success : BRAND.gold}`,
+                color: BRAND.ink, maxWidth: '32rem',
+              }}>
+                <div className="text-xs uppercase tracking-widest font-semibold mb-1" style={{ color: user.priorResult.ever_passed ? BRAND.success : BRAND.dark }}>
+                  On file: {user.priorResult.attempts} attempt{user.priorResult.attempts === 1 ? '' : 's'}{user.priorResult.ever_passed ? ' · passed' : ' · not yet passed'}
+                </div>
+                Latest: {user.priorResult.score}/{user.priorResult.total} on {new Date(user.priorResult.completed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
+                {' '}You may retake the examination at any time — every attempt is recorded separately.
+              </div>
+            )}
             <div className="mb-6 p-4 flex items-center gap-3" style={{ background: 'white', border: `1px solid ${BRAND.rule}`, maxWidth: '32rem' }}>
               <span className="flex-shrink-0 inline-flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: '50%', background: BRAND.cream, color: BRAND.dark, fontFamily: 'var(--fnt-display)', fontWeight: 600 }}>
                 {user.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
@@ -944,7 +957,7 @@ function ModuleView({ module, idx, total, onPrev, onNext, kcAnswer, onKcAnswer, 
 // Final exam
 // =============================================================
 
-function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score, saveStatus }) {
+function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score, saveStatus, onRetake }) {
   const allAnswered = exam.every((_, i) => answers[i] != null);
   const passed = score != null && score / exam.length >= PASS_THRESHOLD;
   const ref = useRef(null);
@@ -1001,6 +1014,16 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score,
               <p className="text-xs leading-relaxed mt-2 font-semibold" style={{ color: BRAND.warn }}>
                 This attempt could not be saved to the results database — check your connection. Your score is shown above; resubmitting after reconnecting will record it.
               </p>
+            )}
+            {!passed && onRetake && (
+              <button
+                type="button"
+                onClick={onRetake}
+                className="mt-4 px-5 py-2.5 text-sm font-semibold inline-flex items-center gap-2"
+                style={{ background: BRAND.dark, color: 'white', cursor: 'pointer' }}
+              >
+                <RefreshCw size={14} /> Retake examination
+              </button>
             )}
           </div>
         )}
@@ -1093,6 +1116,16 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score,
               <ChevronRight size={16} />
             </button>
           )}
+          {submitted && !passed && onRetake && (
+            <button
+              type="button"
+              onClick={onRetake}
+              className="px-7 py-3 text-sm font-semibold inline-flex items-center gap-2"
+              style={{ background: BRAND.dark, color: 'white', cursor: 'pointer' }}
+            >
+              <RefreshCw size={14} /> Retake examination
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1103,7 +1136,7 @@ function ExamView({ exam, answers, onAnswer, onSubmit, onBack, submitted, score,
 // Certificate
 // =============================================================
 
-function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus, onBack, onAdmin }) {
+function Certificate({ name, email, score, total, date, onRetake, onPrint, saveStatus, onBack, onAdmin, attempt }) {
   return (
     <div className="overflow-y-auto" style={{ height: '100vh', background: BRAND.paper }}>
       <div className="px-6 sm:px-12 py-10 sm:py-14 max-w-3xl mx-auto">
@@ -1167,7 +1200,7 @@ function Certificate({ name, email, score, total, date, onRetake, onPrint, saveS
               <div>
                 <div className="text-xs uppercase tracking-widest font-semibold mb-1" style={{ color: BRAND.gold }}>Score</div>
                 <div className="text-xl" style={{ fontFamily: 'var(--fnt-display)', color: BRAND.dark }}>{score} / {total}</div>
-                <div className="text-xs" style={{ color: BRAND.muted }}>{Math.round((score / total) * 100)}%</div>
+                <div className="text-xs" style={{ color: BRAND.muted }}>{Math.round((score / total) * 100)}%{attempt ? ` · Attempt ${attempt}` : ''}</div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-widest font-semibold mb-1" style={{ color: BRAND.gold }}>Modules</div>
@@ -1237,6 +1270,7 @@ function AdminView({ user, onClose }) {
         score={reprint.score}
         total={reprint.total}
         date={fmtDate(reprint.completed_at)}
+        attempt={reprint.attempt}
         onPrint={() => window.print()}
         onBack={() => setReprint(null)}
       />
@@ -1304,7 +1338,7 @@ function AdminView({ user, onClose }) {
             <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 720 }}>
               <thead>
                 <tr style={{ borderBottom: `2px solid ${BRAND.rule}` }}>
-                  {['Name', 'Email', 'Score', 'Result', 'Version', 'Completed', ''].map((h) => (
+                  {['Name', 'Email', 'Attempt', 'Score', 'Result', 'Version', 'Completed', ''].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs uppercase tracking-widest font-semibold" style={{ color: BRAND.dark }}>{h}</th>
                   ))}
                 </tr>
@@ -1314,6 +1348,7 @@ function AdminView({ user, onClose }) {
                   <tr key={r.id} style={{ borderBottom: `1px solid ${BRAND.ruleSoft}` }}>
                     <td className="px-4 py-3" style={{ color: BRAND.ink }}>{r.user_name}</td>
                     <td className="px-4 py-3" style={{ color: BRAND.muted }}>{r.user_email}</td>
+                    <td className="px-4 py-3" style={{ color: BRAND.ink }}>#{r.attempt}</td>
                     <td className="px-4 py-3" style={{ color: BRAND.ink }}>{r.score}/{r.total} · {Math.round((r.score / r.total) * 100)}%</td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 text-xs font-semibold" style={r.passed
@@ -1392,6 +1427,7 @@ export default function App() {
   const [examScore, setExamScore] = useState(null);
   const [examPassed, setExamPassed] = useState(false);
   const [completionDate, setCompletionDate] = useState(null);
+  const [attemptNo, setAttemptNo] = useState(null); // which attempt the current result was recorded as (from the server)
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Load on mount: check the Entra session first, then restore this
@@ -1416,6 +1452,7 @@ export default function App() {
           if (s.examScore != null) setExamScore(s.examScore);
           if (s.examPassed) setExamPassed(s.examPassed);
           if (s.completionDate) setCompletionDate(s.completionDate);
+          if (s.attemptNo != null) setAttemptNo(s.attemptNo);
         }
       }
       setLoaded(true);
@@ -1426,8 +1463,8 @@ export default function App() {
   // on exam submission).
   useEffect(() => {
     if (!loaded || !user) return;
-    saveState(user.email, { started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate });
-  }, [loaded, user, started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate]);
+    saveState(user.email, { started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate, attemptNo });
+  }, [loaded, user, started, currentIdx, atExam, completed, kcResults, examAnswers, examSubmitted, examScore, examPassed, completionDate, attemptNo]);
 
   function onStart() {
     setStarted(true);
@@ -1486,10 +1523,12 @@ export default function App() {
       examAnswers,
       kcResults,
     })
-      .then(() => setSaveStatus('saved'))
+      .then((r) => { setSaveStatus('saved'); if (r && r.attempt) setAttemptNo(r.attempt); })
       .catch(() => setSaveStatus('error'));
   }
 
+  // Start a fresh attempt. The previous attempt is already on file —
+  // every submission is its own row in the results database.
   function onRetake() {
     setExamAnswers({});
     setExamSubmitted(false);
@@ -1497,6 +1536,7 @@ export default function App() {
     setExamPassed(false);
     setCompletionDate(null);
     setSaveStatus(null);
+    setAttemptNo(null);
   }
 
   function onPrint() {
@@ -1538,6 +1578,7 @@ export default function App() {
           onRetake={onRetake}
           onPrint={onPrint}
           saveStatus={saveStatus}
+          attempt={attemptNo}
           onAdmin={user?.isAdmin ? () => setAdminOpen(true) : undefined}
         />
       </div>
@@ -1606,6 +1647,7 @@ export default function App() {
               submitted={examSubmitted}
               saveStatus={saveStatus}
               score={examScore}
+              onRetake={onRetake}
             />
           ) : (
             <ModuleView

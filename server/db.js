@@ -61,7 +61,12 @@ export async function insertResult({ entraOid, userName, userEmail, score, total
     [entraOid, userName, userEmail, score, total, passed, trainingVersion,
      JSON.stringify(examAnswers ?? null), JSON.stringify(kcResults ?? null)],
   );
-  return rows[0];
+  // Which attempt this was for the person (1-based, includes the row just written).
+  const { rows: cnt } = await getPool().query(
+    `SELECT COUNT(*)::int AS attempt FROM exam_results WHERE user_email = $1`,
+    [userEmail],
+  );
+  return { ...rows[0], attempt: cnt[0].attempt };
 }
 
 // Every submission, newest first — powers the admin dashboard and
@@ -70,7 +75,8 @@ export async function insertResult({ entraOid, userName, userEmail, score, total
 export async function listResults() {
   const { rows } = await getPool().query(
     `SELECT id, user_name, user_email, score, total, passed,
-            training_version, completed_at
+            training_version, completed_at,
+            ROW_NUMBER() OVER (PARTITION BY user_email ORDER BY completed_at, id)::int AS attempt
        FROM exam_results
       ORDER BY completed_at DESC
       LIMIT 5000`,
@@ -78,11 +84,15 @@ export async function listResults() {
   return rows;
 }
 
-// Most recent submissions for a user — used to tell a returning user
-// they already have a passing record on file.
+// Most recent submission for a user, plus their attempt history in
+// aggregate (how many attempts, and whether any of them passed) —
+// used to tell a returning user what is on file. Window functions
+// compute over the filtered rows before LIMIT applies.
 export async function latestResultFor(email) {
   const { rows } = await getPool().query(
-    `SELECT id, score, total, passed, training_version, completed_at
+    `SELECT id, score, total, passed, training_version, completed_at,
+            COUNT(*)  OVER ()::int AS attempts,
+            BOOL_OR(passed) OVER () AS ever_passed
        FROM exam_results
       WHERE user_email = $1
       ORDER BY completed_at DESC

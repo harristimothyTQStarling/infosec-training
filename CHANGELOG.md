@@ -12,6 +12,14 @@ Completion records store the `TRAINING_VERSION` in effect at the time — HR sho
 
 ---
 
+## [2.2.0] — 2026-09-30
+
+Retakes.
+
+- Fixed the dead end after a failed examination: the results banner told the workforce member to retake, but no retake control existed on that screen (the only one lived on the certificate, which failers never reach). **Retake examination** now appears in the failed-result banner and the exam footer; it clears the answers and starts a fresh attempt.
+- Every attempt was already stored as its own row in `exam_results`; attempts are now **numbered per person** (chronological). The attempt number appears on the Record of Completion (Score tile), in the admin dashboard (new Attempt column), in the Excel export, and is returned by `POST /api/results`.
+- Returning users see their history on the welcome screen — "On file: N attempts · passed / not yet passed", latest score and date — with an explicit note that retaking is allowed and each attempt is recorded separately.
+
 ## [2.1.1] — 2026-07-30
 
 Bug fix.

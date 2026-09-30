@@ -107,7 +107,7 @@ app.post('/api/results', requireUser, async (req, res) => {
       trainingVersion: String(trainingVersion || 'unknown'),
       examAnswers, kcResults,
     });
-    res.status(201).json({ id: row.id, completedAt: row.completed_at });
+    res.status(201).json({ id: row.id, completedAt: row.completed_at, attempt: row.attempt });
   } catch (err) {
     console.error('insertResult failed:', err.message);
     res.status(500).json({ error: 'db_write_failed' });
@@ -134,6 +134,7 @@ app.get('/api/admin/results.xlsx', requireAdmin, async (req, res) => {
     ws.columns = [
       { header: 'Name', key: 'user_name', width: 28 },
       { header: 'Email', key: 'user_email', width: 32 },
+      { header: 'Attempt', key: 'attempt', width: 9 },
       { header: 'Score', key: 'score', width: 8 },
       { header: 'Total', key: 'total', width: 8 },
       { header: 'Percent', key: 'percent', width: 10 },
